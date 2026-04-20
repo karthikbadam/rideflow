@@ -1,0 +1,2 @@
+-- TODO(phase 0.2): seed a handful of drivers + rides so Debezium has data to
+-- snapshot on first run. 5-10 rows per table is plenty for the learning flow.

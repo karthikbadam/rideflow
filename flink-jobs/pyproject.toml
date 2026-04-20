@@ -1,0 +1,15 @@
+[project]
+name = "rideflow-flink-jobs"
+version = "0.1.0"
+description = "RideFlow PyFlink jobs (Phase 0.6 + Phase 2)"
+# PyFlink 1.18 supports Python 3.7–3.10 (not 3.11).
+requires-python = ">=3.9,<3.11"
+dependencies = [
+    "apache-flink==1.18.1",
+    "redis==5.0.1",
+    "fastavro==1.9.7",
+    "requests==2.32.3",
+]
+
+[tool.uv]
+package = false

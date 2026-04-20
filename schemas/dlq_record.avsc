@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "DeadLetterRecord",
+  "namespace": "rideflow.dlq",
+  "doc": "Flat schema (no envelope) — DLQ consumers must not assume structure of the original payload. docs/02 §7. Same schema is registered under 4 subjects, one per core topic's .dlq sibling.",
+  "fields": [
+    {"name": "original_topic",       "type": "string"},
+    {"name": "original_key_bytes",   "type": "bytes"},
+    {"name": "original_value_bytes", "type": "bytes"},
+    {"name": "failure_reason",       "type": "string"},
+    {"name": "failure_stage", "type": {
+      "type": "enum",
+      "name": "FailureStage",
+      "symbols": ["deserialize", "validate", "business", "sink"]
+    }},
+    {"name": "failed_at",        "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "original_headers", "type": {"type": "map", "values": "string"}}
+  ]
+}

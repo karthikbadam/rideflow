@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "name": "GeoPoint",
+  "namespace": "rideflow.common",
+  "doc": "Shared lat/lon pair with optional H3 cell (res 9). docs/02 §4.5.",
+  "fields": [
+    {"name": "lat", "type": "double"},
+    {"name": "lon", "type": "double"},
+    {"name": "h3_cell", "type": ["null", "string"], "default": null}
+  ]
+}

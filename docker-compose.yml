@@ -1,0 +1,399 @@
+name: rideflow
+
+# -----------------------------------------------------------------------------
+# YAML anchors — shared Kafka broker config (one definition, 3 brokers reuse it)
+# -----------------------------------------------------------------------------
+x-kafka-env: &kafka-env
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "0@kafka-0:29093,1@kafka-1:29093,2@kafka-2:29093"
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "${KAFKA_AUTO_CREATE_TOPICS_ENABLE:-false}"
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "${KAFKA_DEFAULT_REPLICATION_FACTOR:-3}"
+  KAFKA_MIN_INSYNC_REPLICAS: "${KAFKA_MIN_INSYNC_REPLICAS:-2}"
+  KAFKA_LOG_RETENTION_HOURS: "${KAFKA_LOG_RETENTION_HOURS:-168}"
+  KAFKA_LOG_SEGMENT_BYTES: "${KAFKA_LOG_SEGMENT_BYTES:-104857600}"
+  # Required for 3-broker clusters — otherwise __consumer_offsets creation hangs.
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  # Fixed cluster UUID so storage format is deterministic across resets.
+  CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+x-kafka-healthcheck: &kafka-healthcheck
+  test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1 || exit 1"]
+  interval: 10s
+  timeout: 5s
+  retries: 15
+  start_period: 30s
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Kafka — 3 brokers in KRaft mode (no Zookeeper)
+  #    External listeners on 9092/9093/9094 for host-side tools.
+  #    Internal listener on 29092 used by every in-compose service.
+  # ---------------------------------------------------------------------------
+  kafka-0:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka-0
+    container_name: rideflow-kafka-0
+    ports:
+      - "9092:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 0
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:29092,PLAINTEXT_HOST://localhost:9092
+    volumes:
+      - kafka-0-data:/var/lib/kafka/data
+    healthcheck: *kafka-healthcheck
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka-1
+    container_name: rideflow-kafka-1
+    ports:
+      - "9093:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9093
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    healthcheck: *kafka-healthcheck
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.6.1
+    hostname: kafka-2
+    container_name: rideflow-kafka-2
+    ports:
+      - "9094:9092"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29092,PLAINTEXT_HOST://localhost:9094
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    healthcheck: *kafka-healthcheck
+
+  # ---------------------------------------------------------------------------
+  # 2. topic-init — one-shot: creates every topic per docs/01 §5 and the
+  #    internal topics Schema Registry & Kafka Connect need (auto-create is off).
+  # ---------------------------------------------------------------------------
+  topic-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: rideflow-topic-init
+    depends_on:
+      kafka-0: {condition: service_healthy}
+      kafka-1: {condition: service_healthy}
+      kafka-2: {condition: service_healthy}
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        BS="kafka-0:29092"
+        create() {
+          kafka-topics --bootstrap-server "$$BS" --create --if-not-exists \
+            --topic "$$1" --partitions "$$2" --replication-factor 3 \
+            $${3:+--config "$$3"}
+        }
+        # Core event topics (retention from docs/01 §5)
+        create driver.location.v1   12 "retention.ms=3600000"         # 1h
+        create ride.request.v1       6 "retention.ms=86400000"        # 24h
+        create ride.lifecycle.v1     6 "retention.ms=604800000"       # 7d
+        create anomaly.detected.v1   3 "retention.ms=2592000000"      # 30d
+        # DLQs (per-topic, 30d retention, single partition — low volume)
+        create driver.location.v1.dlq   1 "retention.ms=2592000000"
+        create ride.request.v1.dlq      1 "retention.ms=2592000000"
+        create ride.lifecycle.v1.dlq    1 "retention.ms=2592000000"
+        create anomaly.detected.v1.dlq  1 "retention.ms=2592000000"
+        # CDC topics (Debezium writes here once the connector is registered in Phase 2)
+        create dbz.public.drivers   3 "retention.ms=604800000"        # 7d
+        create dbz.public.rides     6 "retention.ms=604800000"        # 7d
+        # Internal — Schema Registry stores schemas here, compacted
+        create _schemas   1 "cleanup.policy=compact"
+        # Internal — Kafka Connect metadata (compacted where required by Connect)
+        create _connect-configs  1 "cleanup.policy=compact"
+        create _connect-offsets 25 "cleanup.policy=compact"
+        create _connect-status   5 "cleanup.policy=compact"
+        echo "topic-init: done"
+        kafka-topics --bootstrap-server "$$BS" --list
+
+  # ---------------------------------------------------------------------------
+  # 3. Schema Registry — BACKWARD compat default (locked in docs/02 §5)
+  # ---------------------------------------------------------------------------
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    hostname: schema-registry
+    container_name: rideflow-schema-registry
+    depends_on:
+      topic-init: {condition: service_completed_successfully}
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-0:29092,PLAINTEXT://kafka-1:29092,PLAINTEXT://kafka-2:29092
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: ${SCHEMA_REGISTRY_COMPATIBILITY:-BACKWARD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # 4. Kafka UI — 3-broker view + SR + Connect wired together
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: rideflow-kafka-ui
+    depends_on:
+      schema-registry: {condition: service_healthy}
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: rideflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+      DYNAMIC_CONFIG_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # 5. Redis — hot-path materialized views
+  #    maxmemory=0 means unlimited (Redis convention).
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.2.4-alpine
+    container_name: rideflow-redis
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --maxmemory
+      - "${REDIS_MAXMEMORY:-0}"
+      - --maxmemory-policy
+      - "${REDIS_MAXMEMORY_POLICY:-noeviction}"
+      - --appendonly
+      - "${REDIS_APPENDONLY:-no}"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # 6. Postgres — source-of-truth + CDC source
+  #    wal_level=logical is required for Debezium (docs/01 §9).
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16.2
+    container_name: rideflow-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rideflow}
+      POSTGRES_USER: ${POSTGRES_USER:-rideflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rideflow}
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rideflow} -d ${POSTGRES_DB:-rideflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # 7. Kafka Connect — base image for now; Debezium plugin added in Phase 2
+  #    via ./connect/Dockerfile (build: switch then).
+  # ---------------------------------------------------------------------------
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.1
+    hostname: kafka-connect
+    container_name: rideflow-kafka-connect
+    depends_on:
+      topic-init: {condition: service_completed_successfully}
+      schema-registry: {condition: service_healthy}
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: rideflow-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # 8. Flink — 1 JobManager + 2 TaskManagers, RocksDB state backend.
+  #    Swaps to build: ./flink-jobs in Phase 0.6 once PyFlink deps are baked in.
+  # ---------------------------------------------------------------------------
+  flink-jm:
+    build: ./flink-jobs
+    image: rideflow-flink:local
+    hostname: flink-jm
+    container_name: rideflow-flink-jm
+    ports:
+      - "8082:8081"
+    command: jobmanager
+    environment: &flink-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      LOCATION_TOPIC: driver.location.v1
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      HOT_ZONES_GROUP: flink-hot-zones
+      HOT_ZONES_STARTUP: ${HOT_ZONES_STARTUP:-latest-offset}
+      HOT_ZONES_BOUNDEDNESS_SEC: ${HOT_ZONES_BOUNDEDNESS_SEC:-10}
+      HOT_ZONES_WINDOW_MIN: ${HOT_ZONES_WINDOW_MIN:-1}
+      HOT_ZONES_TTL_SECONDS: ${HOT_ZONES_TTL_SECONDS:-300}
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jm
+        rest.address: 0.0.0.0
+        rest.bind-address: 0.0.0.0
+        taskmanager.numberOfTaskSlots: ${FLINK_TASKMANAGER_NUMBER_TASK_SLOTS:-2}
+        parallelism.default: ${FLINK_PARALLELISM_DEFAULT:-4}
+        pipeline.max-parallelism: ${FLINK_PIPELINE_MAX_PARALLELISM:-128}
+        state.backend.type: ${FLINK_STATE_BACKEND:-rocksdb}
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+        execution.checkpointing.interval: ${FLINK_EXECUTION_CHECKPOINTING_INTERVAL:-10000}
+        execution.checkpointing.mode: ${FLINK_EXECUTION_CHECKPOINTING_MODE:-AT_LEAST_ONCE}
+        execution.checkpointing.timeout: ${FLINK_EXECUTION_CHECKPOINTING_TIMEOUT:-600000}
+        execution.checkpointing.min-pause: ${FLINK_EXECUTION_CHECKPOINTING_MIN_PAUSE:-5000}
+        execution.checkpointing.unaligned: ${FLINK_EXECUTION_CHECKPOINTING_UNALIGNED:-true}
+        taskmanager.memory.process.size: ${FLINK_TASKMANAGER_MEMORY_PROCESS_SIZE:-1728m}
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      - flink-savepoints:/opt/flink/savepoints
+      - ./flink-jobs/jobs:/opt/flink/jobs:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  flink-tm-1:
+    image: rideflow-flink:local
+    container_name: rideflow-flink-tm-1
+    depends_on:
+      flink-jm: {condition: service_healthy}
+    command: taskmanager
+    environment: *flink-env
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      - flink-savepoints:/opt/flink/savepoints
+
+  flink-tm-2:
+    image: rideflow-flink:local
+    container_name: rideflow-flink-tm-2
+    depends_on:
+      flink-jm: {condition: service_healthy}
+    command: taskmanager
+    environment: *flink-env
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      - flink-savepoints:/opt/flink/savepoints
+
+  # ---------------------------------------------------------------------------
+  # 9. Ingest API — FastAPI, Avro-serializing producer to driver.location.v1
+  # ---------------------------------------------------------------------------
+  ingest-api:
+    build: ./ingest-api
+    container_name: rideflow-ingest-api
+    depends_on:
+      schema-registry: {condition: service_healthy}
+      topic-init: {condition: service_completed_successfully}
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      LOCATION_TOPIC: driver.location.v1
+      PRODUCER_NAME: ingest-api
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+  # ---------------------------------------------------------------------------
+  # 10. Simulator — paced POSTs of DriverLocationPinged to Ingest API
+  # ---------------------------------------------------------------------------
+  simulator:
+    build: ./simulator
+    container_name: rideflow-simulator
+    depends_on:
+      ingest-api: {condition: service_healthy}
+    env_file:
+      - .env
+    environment:
+      INGEST_API_URL: http://ingest-api:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # 11. Query API — FastAPI read path: hot zones (Redis) + CDC reads (Phase 2)
+  # ---------------------------------------------------------------------------
+  query-api:
+    build: ./query-api
+    container_name: rideflow-query-api
+    depends_on:
+      redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      POSTGRES_HOST: postgres
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+volumes:
+  kafka-0-data:
+  kafka-1-data:
+  kafka-2-data:
+  redis-data:
+  postgres-data:
+  flink-checkpoints:
+  flink-savepoints:

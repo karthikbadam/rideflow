@@ -1,0 +1,15 @@
+[project]
+name = "rideflow-simulator"
+version = "0.1.0"
+description = "RideFlow synthetic event generator (Phase 0.5)"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "httpx==0.27.2",
+    "pydantic==2.9.2",
+    "pydantic-settings==2.6.1",
+    "structlog==24.4.0",
+    "h3==3.7.7",
+]
+
+[tool.uv]
+package = false

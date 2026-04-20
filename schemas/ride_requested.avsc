@@ -1,0 +1,28 @@
+{
+  "type": "record",
+  "name": "RideRequested",
+  "namespace": "rideflow.events",
+  "doc": "ride.request.v1 — keyed by rider_id. docs/02 §4.2. ride_id is client-generated so retried POSTs hash to the same partition and Flink can dedupe.",
+  "fields": [
+    {"name": "envelope", "type": "rideflow.common.Envelope"},
+    {
+      "name": "payload",
+      "type": {
+        "type": "record",
+        "name": "RideRequestedPayload",
+        "fields": [
+          {"name": "ride_id",  "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "rider_id", "type": "string"},
+          {"name": "pickup",   "type": "rideflow.common.GeoPoint"},
+          {"name": "dropoff",  "type": "rideflow.common.GeoPoint"},
+          {"name": "product_tier", "type": {
+            "type": "enum",
+            "name": "ProductTier",
+            "symbols": ["economy", "comfort", "premium"]
+          }},
+          {"name": "requested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+        ]
+      }
+    }
+  ]
+}

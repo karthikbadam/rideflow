@@ -1,0 +1,5 @@
+-- TODO(phase 0.2): drivers and rides tables.
+-- drivers(driver_id PK uuid, name, phone, vehicle_type, created_at, updated_at)
+-- rides(ride_id PK uuid, rider_id, driver_id FK, state, pickup/dropoff geo,
+--       fare numeric(10,2), created_at, updated_at)
+-- Both tables need a replica identity compatible with Debezium (default PK).

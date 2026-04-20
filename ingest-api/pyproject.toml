@@ -1,0 +1,19 @@
+[project]
+name = "rideflow-ingest-api"
+version = "0.1.0"
+description = "RideFlow ingest API — write path (Phase 0.4)"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "confluent-kafka==2.5.0",
+    "fastavro==1.9.7",
+    "requests==2.32.3",
+    "pydantic==2.9.2",
+    "pydantic-settings==2.6.1",
+    "structlog==24.4.0",
+    "h3==3.7.7",
+]
+
+[tool.uv]
+package = false

@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "DriverLocationPinged",
+  "namespace": "rideflow.events",
+  "doc": "driver.location.v1 — keyed by driver_id. docs/02 §4.1. Optional fields use nullable unions so old producers without them stay BACKWARD-compatible.",
+  "fields": [
+    {"name": "envelope", "type": "rideflow.common.Envelope"},
+    {
+      "name": "payload",
+      "type": {
+        "type": "record",
+        "name": "DriverLocationPingedPayload",
+        "fields": [
+          {"name": "driver_id", "type": "string"},
+          {"name": "lat", "type": "double"},
+          {"name": "lon", "type": "double"},
+          {"name": "h3_cell", "type": "string"},
+          {"name": "heading_degrees", "type": ["null", "float"], "default": null},
+          {"name": "speed_mps",       "type": ["null", "float"], "default": null},
+          {"name": "accuracy_meters", "type": ["null", "float"], "default": null}
+        ]
+      }
+    }
+  ]
+}

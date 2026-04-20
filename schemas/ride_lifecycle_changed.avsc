@@ -1,0 +1,28 @@
+{
+  "type": "record",
+  "name": "RideLifecycleChanged",
+  "namespace": "rideflow.events",
+  "doc": "ride.lifecycle.v1 — keyed by ride_id. docs/02 §4.3. Transition event (not snapshot); storing transitions lets you rebuild any state.",
+  "fields": [
+    {"name": "envelope", "type": "rideflow.common.Envelope"},
+    {
+      "name": "payload",
+      "type": {
+        "type": "record",
+        "name": "RideLifecycleChangedPayload",
+        "fields": [
+          {"name": "ride_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "from_state", "type": {
+            "type": "enum",
+            "name": "RideState",
+            "symbols": ["requested", "matched", "started", "completed", "cancelled"]
+          }},
+          {"name": "to_state",  "type": "RideState"},
+          {"name": "driver_id", "type": ["null", "string"], "default": null},
+          {"name": "reason",    "type": ["null", "string"], "default": null},
+          {"name": "changed_at","type": {"type": "long", "logicalType": "timestamp-millis"}}
+        ]
+      }
+    }
+  ]
+}

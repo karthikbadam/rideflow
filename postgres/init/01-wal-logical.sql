@@ -1,0 +1,6 @@
+-- TODO(phase 0.2): enable logical replication for Debezium.
+--   ALTER SYSTEM SET wal_level = logical;
+--   ALTER SYSTEM SET max_wal_senders = 10;
+--   ALTER SYSTEM SET max_replication_slots = 10;
+-- Requires a Postgres restart — handled via postgres command args in compose,
+-- not this init script. This file is reserved for per-cluster replication grants.

@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "Envelope",
+  "namespace": "rideflow.common",
+  "doc": "Shared envelope attached to every event on the 4 core topics (docs/02 §3). event_version defaults to 1 so producers can add a version later without breaking BACKWARD compat.",
+  "fields": [
+    {"name": "event_id",      "type": {"type": "string", "logicalType": "uuid"}},
+    {"name": "event_type",    "type": "string"},
+    {"name": "event_version", "type": "int", "default": 1},
+    {"name": "occurred_at",   "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "ingested_at",   "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "producer",      "type": "string"},
+    {"name": "trace_id",      "type": {"type": "string", "logicalType": "uuid"}}
+  ]
+}

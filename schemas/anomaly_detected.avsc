@@ -1,0 +1,37 @@
+{
+  "type": "record",
+  "name": "AnomalyDetected",
+  "namespace": "rideflow.events",
+  "doc": "anomaly.detected.v1 — keyed by entity_id so anomalies for the same entity land on one partition. docs/02 §4.4. evidence is a free-form map<string> of supporting fields (e.g. observed_speed_mps, prev_lat).",
+  "fields": [
+    {"name": "envelope", "type": "rideflow.common.Envelope"},
+    {
+      "name": "payload",
+      "type": {
+        "type": "record",
+        "name": "AnomalyDetectedPayload",
+        "fields": [
+          {"name": "anomaly_id", "type": {"type": "string", "logicalType": "uuid"}},
+          {"name": "anomaly_type", "type": {
+            "type": "enum",
+            "name": "AnomalyType",
+            "symbols": ["teleport", "speed_violation", "ghost_driver", "dup_event", "clock_skew"]
+          }},
+          {"name": "entity_type", "type": {
+            "type": "enum",
+            "name": "EntityType",
+            "symbols": ["driver", "rider", "ride"]
+          }},
+          {"name": "entity_id", "type": "string"},
+          {"name": "severity", "type": {
+            "type": "enum",
+            "name": "Severity",
+            "symbols": ["low", "medium", "high", "critical"]
+          }},
+          {"name": "evidence",   "type": {"type": "map", "values": "string"}},
+          {"name": "detected_at","type": {"type": "long", "logicalType": "timestamp-millis"}}
+        ]
+      }
+    }
+  ]
+}
