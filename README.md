@@ -45,7 +45,3 @@ make reset               # full teardown including volumes
 | Postgres         | 5432              | `postgres://rideflow:rideflow@localhost:5432/rideflow` |
 | Redis            | 6379              | `redis://localhost:6379/0`     |
 
-## Status
-
-Phase 0.1 complete — directory tree + stubs. See checklist for next step.
-# rideflow
