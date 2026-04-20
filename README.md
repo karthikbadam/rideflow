@@ -1,7 +1,7 @@
 # RideFlow
 
 A local Kafka + Flink learning lab. Simulates a ride-hailing platform's event
-pipeline end-to-end so you can see — and tune — every moving piece.
+pipeline end-to-end so you can see and tune every moving piece.
 
 ## What's in the box
 
@@ -16,8 +16,7 @@ A Docker Compose stack with:
 - **Simulator** (Python) — synthetic driver/ride load
 - **Kafka UI** — visualize partitions, lag, ISR
 
-Everything is tunable via env vars — the 23 experiments in `docs/03-tuning.md`
-are flipped without rebuilding images.
+Everything is tunable via env vars.
 
 ## Quickstart
 
@@ -45,16 +44,6 @@ make reset               # full teardown including volumes
 | Kafka brokers    | 9092 / 9093 / 9094 | (external listeners)          |
 | Postgres         | 5432              | `postgres://rideflow:rideflow@localhost:5432/rideflow` |
 | Redis            | 6379              | `redis://localhost:6379/0`     |
-
-## Docs
-
-Read in order:
-
-- [`docs/01-architecture.md`](docs/01-architecture.md) — services, ports, topology
-- [`docs/02-schemas.md`](docs/02-schemas.md) — Avro schemas, envelope, DLQ
-- [`docs/03-tuning.md`](docs/03-tuning.md) — every tunable dial + experiment list
-- [`docs/04-checklist.md`](docs/04-checklist.md) — Phase 0 → Phase 6 checklist
-- [`docs/05-claude-code-brief.md`](docs/05-claude-code-brief.md) — scaffold brief
 
 ## Status
 
