@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     hot_zones_default_limit: int = 10
     hot_zones_max_limit: int = 100
 
+    # Surge (Phase 2.1)
+    surge_key_prefix: str = "zones:surge:"
+
+    # Idle drivers (Phase 2.2)
+    idle_key: str = "drivers:idle"
+
+    # Ride matches (Phase 2.3)
+    matches_recent_key: str = "rides:matches:recent"
+    matches_per_ride_prefix: str = "rides:matches:"
+
     # Postgres — unused in Phase 1, read from env so Phase 2 just wires in.
     postgres_host: str = "postgres"
     postgres_port: int = 5432

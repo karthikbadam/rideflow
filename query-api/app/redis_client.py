@@ -1,8 +1,13 @@
-"""Async Redis pool + hot-zones query helpers.
+"""Async Redis pool + hot-zones, surge, idle, and match query helpers.
 
-Hot zones are written by the Flink job as `zones:hot:<window_end_ms>` sorted
-sets (score = distinct driver count). This module answers: "give me top-N
-cells from the most recent closed window."
+Stream-shaped Redis keys written by Flink jobs:
+  zones:hot:<window_end_ms>      ZSET   h3_cell -> distinct driver count   (01_hot_zones)
+  zones:surge:<window_end_ms>    ZSET   h3_cell -> ride request count      (02_surge_pricing)
+  drivers:idle                   ZSET   driver_id -> session_end_ms        (03_idle_detector)
+  drivers:idle:<driver_id>       HASH   session_end_ms, ping_count, last_h3_cell
+  rides:matches:recent           ZSET   "ride_id:driver_id" -> match_ms    (04_ride_matching)
+  rides:matches:<ride_id>        ZSET   driver_id -> match_ms
+  rides:matches:<ride_id>:meta   HASH   h3_cell, last_match_ms
 """
 from __future__ import annotations
 
@@ -33,12 +38,8 @@ class RedisClient:
     async def close(self) -> None:
         await self.pool.disconnect()
 
-    async def latest_window_key(self) -> Optional[str]:
-        """Return the highest window key, or None if no windows have closed yet.
-
-        SCAN (not KEYS) to avoid blocking Redis on larger keyspaces.
-        """
-        prefix = self.settings.hot_zones_key_prefix
+    async def _latest_window_key(self, prefix: str) -> Optional[str]:
+        """Scan (not KEYS) for the highest window_end_ms under `prefix`."""
         latest_ms = -1
         latest_key: Optional[str] = None
         async for key in self._conn().scan_iter(match=f"{prefix}*", count=200):
@@ -52,18 +53,67 @@ class RedisClient:
         return latest_key
 
     async def top_hot_zones(self, limit: int) -> dict:
-        """Top-N cells (descending) from the most recent window.
-
-        Returns a dict ready to be JSON-serialized by FastAPI.
-        """
-        key = await self.latest_window_key()
+        prefix = self.settings.hot_zones_key_prefix
+        key = await self._latest_window_key(prefix)
         if key is None:
             return {"window_end_ms": None, "zones": []}
-
-        # ZREVRANGE with scores → list of (member, score) pairs.
         raw = await self._conn().zrevrange(key, 0, max(0, limit - 1), withscores=True)
-        window_ms = int(key[len(self.settings.hot_zones_key_prefix):])
+        window_ms = int(key[len(prefix):])
         return {
             "window_end_ms": window_ms,
             "zones": [{"h3_cell": h3, "driver_count": int(score)} for h3, score in raw],
+        }
+
+    async def top_surge_zones(self, limit: int) -> dict:
+        prefix = self.settings.surge_key_prefix
+        key = await self._latest_window_key(prefix)
+        if key is None:
+            return {"window_end_ms": None, "zones": []}
+        raw = await self._conn().zrevrange(key, 0, max(0, limit - 1), withscores=True)
+        window_ms = int(key[len(prefix):])
+        return {
+            "window_end_ms": window_ms,
+            "zones": [{"h3_cell": h3, "request_count": int(score)} for h3, score in raw],
+        }
+
+    async def idle_drivers(self, limit: int) -> dict:
+        """Most-recently-idle drivers, descending by session_end_ms."""
+        conn = self._conn()
+        raw = await conn.zrevrange(self.settings.idle_key, 0, max(0, limit - 1), withscores=True)
+        drivers = []
+        for driver_id, score in raw:
+            detail = await conn.hgetall(f"{self.settings.idle_key}:{driver_id}")
+            drivers.append({
+                "driver_id": driver_id,
+                "session_end_ms": int(score),
+                "ping_count": int(detail.get("ping_count", 0)) if detail else 0,
+                "last_h3_cell": detail.get("last_h3_cell") if detail else None,
+            })
+        return {"drivers": drivers}
+
+    async def recent_matches(self, limit: int) -> dict:
+        raw = await self._conn().zrevrange(
+            self.settings.matches_recent_key, 0, max(0, limit - 1), withscores=True
+        )
+        matches = []
+        for member, score in raw:
+            ride_id, _, driver_id = member.partition(":")
+            matches.append({
+                "ride_id": ride_id,
+                "driver_id": driver_id,
+                "match_time_ms": int(score),
+            })
+        return {"matches": matches}
+
+    async def matches_for_ride(self, ride_id: str, limit: int) -> dict:
+        conn = self._conn()
+        key = f"{self.settings.matches_per_ride_prefix}{ride_id}"
+        raw = await conn.zrevrange(key, 0, max(0, limit - 1), withscores=True)
+        meta = await conn.hgetall(f"{key}:meta")
+        return {
+            "ride_id": ride_id,
+            "h3_cell": meta.get("h3_cell") if meta else None,
+            "candidates": [
+                {"driver_id": d, "match_time_ms": int(s)} for d, s in raw
+            ],
         }

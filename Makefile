@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 
-.PHONY: help up down reset logs ps smoke register-schemas deregister-schemas submit-hot-zones topics shell-kafka shell-redis shell-pg
+.PHONY: help up down reset logs ps smoke register-schemas deregister-schemas submit-hot-zones submit-surge submit-idle submit-matching submit-phase2 topics shell-kafka shell-redis shell-pg list-jobs cancel-job
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -36,6 +36,23 @@ submit-hot-zones: ## Submit the hot-zones Flink job (detached)
 	$(COMPOSE) exec -T flink-jm flink run -d \
 	    --pyExecutable /usr/bin/python3 \
 	    -py /opt/flink/jobs/01_hot_zones.py
+
+submit-surge: ## Submit the surge-pricing Flink job (Phase 2.1)
+	$(COMPOSE) exec -T flink-jm flink run -d \
+	    --pyExecutable /usr/bin/python3 \
+	    -py /opt/flink/jobs/02_surge_pricing.py
+
+submit-idle: ## Submit the idle-detector Flink job (Phase 2.2)
+	$(COMPOSE) exec -T flink-jm flink run -d \
+	    --pyExecutable /usr/bin/python3 \
+	    -py /opt/flink/jobs/03_idle_detector.py
+
+submit-matching: ## Submit the ride-matching Flink job (Phase 2.3)
+	$(COMPOSE) exec -T flink-jm flink run -d \
+	    --pyExecutable /usr/bin/python3 \
+	    -py /opt/flink/jobs/04_ride_matching.py
+
+submit-phase2: submit-surge submit-idle submit-matching ## Submit all Phase 2 jobs
 
 list-jobs: ## List currently running Flink jobs
 	$(COMPOSE) exec -T flink-jm flink list

@@ -27,6 +27,7 @@ HOTSPOTS = [
 STEP_DEG = 2.5e-4
 MOMENTUM = 0.85          # fraction of prior heading kept each tick
 JITTER = 0.35            # fraction of step that's random
+HOME_PULL = 0.02         # restoring-force fraction toward home per tick
 MAX_SPEED_MPS = 25.0
 ACCURACY_METERS = 8.0
 
@@ -37,6 +38,8 @@ class Driver:
     lat: float
     lon: float
     heading_rad: float
+    home_lat: float = 0.0
+    home_lon: float = 0.0
     speed_mps: float = 10.0
     step_mag: float = STEP_DEG
 
@@ -46,6 +49,10 @@ class Driver:
         # Random jitter on top of the step.
         dlat = math.cos(self.heading_rad) * self.step_mag + rng.uniform(-JITTER, JITTER) * self.step_mag
         dlon = math.sin(self.heading_rad) * self.step_mag + rng.uniform(-JITTER, JITTER) * self.step_mag
+        # Restoring pull toward home so drivers don't drift to bbox edges and
+        # desynchronize from the pickup hotspots matched against in 04_ride_matching.
+        dlat += (self.home_lat - self.lat) * HOME_PULL
+        dlon += (self.home_lon - self.lon) * HOME_PULL
         self.lat = _clamp(self.lat + dlat, LAT_MIN, LAT_MAX)
         self.lon = _clamp(self.lon + dlon, LON_MIN, LON_MAX)
         self.speed_mps = max(0.0, min(MAX_SPEED_MPS, self.speed_mps + rng.uniform(-1.0, 1.0)))
@@ -76,6 +83,8 @@ def make_drivers(n: int, seed: int) -> list[Driver]:
                 lat=hub_lat + rng.uniform(-0.01, 0.01),
                 lon=hub_lon + rng.uniform(-0.01, 0.01),
                 heading_rad=rng.uniform(-math.pi, math.pi),
+                home_lat=hub_lat,
+                home_lon=hub_lon,
                 speed_mps=rng.uniform(5.0, 15.0),
             )
         )

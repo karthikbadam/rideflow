@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, Request
 from .config import Settings
 from .h3util import cell_for
 from .producers import EventProducer
-from .schemas import DriverLocationPingedIn
+from .schemas import DriverLocationPingedIn, RideRequestedIn
 
 
 def _configure_logging(level: str) -> None:
@@ -40,7 +40,12 @@ async def lifespan(app: FastAPI):
     log = structlog.get_logger("ingest_api")
     app.state.settings = settings
     app.state.producer = EventProducer(settings)
-    log.info("startup", bootstrap=settings.kafka_bootstrap_servers, topic=settings.location_topic)
+    log.info(
+        "startup",
+        bootstrap=settings.kafka_bootstrap_servers,
+        location_topic=settings.location_topic,
+        ride_request_topic=settings.ride_request_topic,
+    )
     try:
         yield
     finally:
@@ -108,4 +113,48 @@ async def post_driver_location(
 
     request.app.state.producer.produce_location(key=req.driver_id, value=event)
     log.info("accepted", driver_id=req.driver_id, event_id=event_id, h3_cell=h3_cell)
+    return {"accepted": True, "event_id": event_id, "trace_id": trace_id}
+
+
+@app.post("/events/ride-request", status_code=202)
+async def post_ride_request(
+    req: RideRequestedIn,
+    request: Request,
+    x_trace_id: str | None = Header(default=None),
+) -> dict:
+    trace_id = x_trace_id or str(uuid4())
+    now_ms = int(time.time() * 1000)
+    pickup_cell = req.pickup.h3_cell or cell_for(req.pickup.lat, req.pickup.lon)
+    dropoff_cell = req.dropoff.h3_cell or cell_for(req.dropoff.lat, req.dropoff.lon)
+    event_id = str(uuid4())
+
+    event = {
+        "envelope": {
+            "event_id": event_id,
+            "event_type": "RideRequested",
+            "event_version": 1,
+            "occurred_at": req.occurred_at_ms or now_ms,
+            "ingested_at": now_ms,
+            "producer": request.app.state.settings.producer_name,
+            "trace_id": trace_id,
+        },
+        "payload": {
+            "ride_id": req.ride_id,
+            "rider_id": req.rider_id,
+            "pickup": {"lat": req.pickup.lat, "lon": req.pickup.lon, "h3_cell": pickup_cell},
+            "dropoff": {"lat": req.dropoff.lat, "lon": req.dropoff.lon, "h3_cell": dropoff_cell},
+            "product_tier": req.product_tier,
+            "requested_at": req.requested_at_ms or now_ms,
+        },
+    }
+
+    # Partition key = rider_id per docs/02 §4.2.
+    request.app.state.producer.produce_ride_request(key=req.rider_id, value=event)
+    log.info(
+        "accepted",
+        rider_id=req.rider_id,
+        ride_id=req.ride_id,
+        event_id=event_id,
+        pickup_h3=pickup_cell,
+    )
     return {"accepted": True, "event_id": event_id, "trace_id": trace_id}

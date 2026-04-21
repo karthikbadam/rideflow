@@ -1,4 +1,4 @@
-"""Query API — GET /zones/hot + GET /health."""
+"""Query API — GET /zones/hot + /zones/surge + /drivers/idle + /rides/matches + /health."""
 from __future__ import annotations
 
 import logging
@@ -64,3 +64,41 @@ async def hot_zones(
     effective = min(limit, settings.hot_zones_max_limit)
     result = await request.app.state.redis.top_hot_zones(effective)
     return {"limit": effective, **result}
+
+
+@app.get("/zones/surge")
+async def surge_zones(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    settings: Settings = request.app.state.settings
+    effective = min(limit, settings.hot_zones_max_limit)
+    result = await request.app.state.redis.top_surge_zones(effective)
+    return {"limit": effective, **result}
+
+
+@app.get("/drivers/idle")
+async def idle_drivers(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=500),
+) -> dict:
+    result = await request.app.state.redis.idle_drivers(limit)
+    return {"limit": limit, **result}
+
+
+@app.get("/rides/matches")
+async def recent_matches(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=500),
+) -> dict:
+    result = await request.app.state.redis.recent_matches(limit)
+    return {"limit": limit, **result}
+
+
+@app.get("/rides/matches/{ride_id}")
+async def matches_for_ride(
+    request: Request,
+    ride_id: str,
+    limit: int = Query(default=10, ge=1, le=100),
+) -> dict:
+    return await request.app.state.redis.matches_for_ride(ride_id, limit)

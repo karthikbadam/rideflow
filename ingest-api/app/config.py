@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     producer_name: str = "ingest-api"
     log_level: str = "INFO"
     location_topic: str = "driver.location.v1"
+    ride_request_topic: str = "ride.request.v1"
 
 
 def build_producer_config(s: Settings) -> dict:

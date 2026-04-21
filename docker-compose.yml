@@ -279,6 +279,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
       LOCATION_TOPIC: driver.location.v1
+      RIDE_REQUEST_TOPIC: ride.request.v1
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       HOT_ZONES_GROUP: flink-hot-zones
@@ -286,6 +287,26 @@ services:
       HOT_ZONES_BOUNDEDNESS_SEC: ${HOT_ZONES_BOUNDEDNESS_SEC:-10}
       HOT_ZONES_WINDOW_MIN: ${HOT_ZONES_WINDOW_MIN:-1}
       HOT_ZONES_TTL_SECONDS: ${HOT_ZONES_TTL_SECONDS:-300}
+      # Phase 2.1 — surge pricing
+      SURGE_GROUP: flink-surge-pricing
+      SURGE_STARTUP: ${SURGE_STARTUP:-latest-offset}
+      SURGE_BOUNDEDNESS_SEC: ${SURGE_BOUNDEDNESS_SEC:-10}
+      SURGE_WINDOW_MIN: ${SURGE_WINDOW_MIN:-5}
+      SURGE_SLIDE_MIN: ${SURGE_SLIDE_MIN:-1}
+      SURGE_TTL_SECONDS: ${SURGE_TTL_SECONDS:-600}
+      # Phase 2.2 — idle detector
+      IDLE_GROUP: flink-idle-detector
+      IDLE_STARTUP: ${IDLE_STARTUP:-latest-offset}
+      IDLE_BOUNDEDNESS_SEC: ${IDLE_BOUNDEDNESS_SEC:-10}
+      IDLE_GAP_MIN: ${IDLE_GAP_MIN:-10}
+      IDLE_TTL_SECONDS: ${IDLE_TTL_SECONDS:-3600}
+      # Phase 2.3 — ride matching
+      MATCH_GROUP: flink-ride-matching
+      MATCH_STARTUP: ${MATCH_STARTUP:-latest-offset}
+      MATCH_BOUNDEDNESS_SEC: ${MATCH_BOUNDEDNESS_SEC:-10}
+      MATCH_PRE_SEC: ${MATCH_PRE_SEC:-60}
+      MATCH_POST_SEC: ${MATCH_POST_SEC:-120}
+      MATCH_TTL_SECONDS: ${MATCH_TTL_SECONDS:-600}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jm
         rest.address: 0.0.0.0
@@ -352,6 +373,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-0:29092,kafka-1:29092,kafka-2:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
       LOCATION_TOPIC: driver.location.v1
+      RIDE_REQUEST_TOPIC: ride.request.v1
       PRODUCER_NAME: ingest-api
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
@@ -367,6 +389,10 @@ services:
       - .env
     environment:
       INGEST_API_URL: http://ingest-api:8000
+      SIM_EPS: ${SIM_EPS:-10.0}
+      SIM_DRIVERS: ${SIM_DRIVERS:-50}
+      SIM_RIDES_PER_SEC: ${SIM_RIDES_PER_SEC:-1.0}
+      SIM_RIDERS: ${SIM_RIDERS:-100}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     restart: unless-stopped
 

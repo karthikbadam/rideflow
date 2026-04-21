@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     sim_eps: float = 10.0            # events/sec across all drivers
     sim_drivers: int = 50
     sim_seed: int = 42
+    sim_rides_per_sec: float = 1.0   # ride.request.v1 rate (docs 2.1/2.3)
+    sim_riders: int = 100
 
     # Fault-injection dials (all 0 in Phase 1; flipped in Phase 3)
     sim_pct_late: float = 0.0        # fraction stamped with past occurred_at
