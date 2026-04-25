@@ -102,3 +102,20 @@ async def matches_for_ride(
     limit: int = Query(default=10, ge=1, le=100),
 ) -> dict:
     return await request.app.state.redis.matches_for_ride(ride_id, limit)
+
+
+@app.get("/anomalies/recent")
+async def recent_anomalies(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=500),
+) -> dict:
+    result = await request.app.state.redis.recent_anomalies(limit)
+    return {"limit": limit, **result}
+
+
+@app.get("/rides/enriched/{ride_id}")
+async def enriched_ride(request: Request, ride_id: str) -> dict:
+    data = await request.app.state.redis.enriched_ride(ride_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"no enriched record for ride {ride_id}")
+    return {"ride_id": ride_id, **data}

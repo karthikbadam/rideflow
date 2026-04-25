@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     matches_recent_key: str = "rides:matches:recent"
     matches_per_ride_prefix: str = "rides:matches:"
 
+    # Anomalies (Phase 2.4)
+    anomalies_recent_key: str = "anomalies:recent"
+    anomalies_detail_prefix: str = "anomalies:"
+
+    # Enriched rides (Phase 2.5)
+    enriched_ride_prefix: str = "rides:enriched:"
+
     # Postgres — unused in Phase 1, read from env so Phase 2 just wires in.
     postgres_host: str = "postgres"
     postgres_port: int = 5432

@@ -1,5 +1,39 @@
 {
-  "__comment": "STUB — TODO(phase 2): Debezium Postgres source connector config. Publication-based replication, tables drivers & rides, topic prefix dbz.public, SMT to drop Debezium envelope for dbz.public.drivers (3 partitions) and dbz.public.rides (6 partitions).",
   "name": "rideflow-postgres-cdc",
-  "config": {}
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "rideflow",
+    "database.password": "rideflow",
+    "database.dbname": "rideflow",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "rideflow_dbz_slot",
+    "publication.name": "rideflow_cdc",
+    "publication.autocreate.mode": "disabled",
+
+    "topic.prefix": "dbz",
+    "schema.include.list": "public",
+    "table.include.list": "public.drivers,public.rides",
+
+    "snapshot.mode": "initial",
+    "heartbeat.interval.ms": "10000",
+    "tombstones.on.delete": "true",
+    "decimal.handling.mode": "string",
+    "time.precision.mode": "connect",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schemas.enable": "true",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,ts_ms"
+  }
 }

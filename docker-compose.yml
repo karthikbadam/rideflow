@@ -233,7 +233,8 @@ services:
   #    via ./connect/Dockerfile (build: switch then).
   # ---------------------------------------------------------------------------
   kafka-connect:
-    image: confluentinc/cp-kafka-connect:7.6.1
+    build: ./connect
+    image: rideflow-connect:local
     hostname: kafka-connect
     container_name: rideflow-kafka-connect
     depends_on:
@@ -307,6 +308,21 @@ services:
       MATCH_PRE_SEC: ${MATCH_PRE_SEC:-60}
       MATCH_POST_SEC: ${MATCH_POST_SEC:-120}
       MATCH_TTL_SECONDS: ${MATCH_TTL_SECONDS:-600}
+      # Phase 2.4 — anomaly detection
+      ANOMALY_TOPIC: anomaly.detected.v1
+      ANOMALY_GROUP: flink-anomaly-detection
+      ANOMALY_STARTUP: ${ANOMALY_STARTUP:-latest-offset}
+      ANOMALY_BOUNDEDNESS_SEC: ${ANOMALY_BOUNDEDNESS_SEC:-10}
+      ANOMALY_SPEED_MPS: ${ANOMALY_SPEED_MPS:-50}
+      ANOMALY_GHOST_GAP_MIN: ${ANOMALY_GHOST_GAP_MIN:-5}
+      ANOMALY_TTL_SECONDS: ${ANOMALY_TTL_SECONDS:-3600}
+      ANOMALY_PRODUCER: flink-anomaly
+      # Phase 2.5 — CDC enrichment
+      DRIVERS_CDC_TOPIC: ${DRIVERS_CDC_TOPIC:-dbz.public.drivers}
+      ENRICH_GROUP: flink-ride-enrichment
+      ENRICH_STARTUP: ${ENRICH_STARTUP:-latest-offset}
+      ENRICH_BOUNDEDNESS_SEC: ${ENRICH_BOUNDEDNESS_SEC:-10}
+      ENRICH_TTL_SECONDS: ${ENRICH_TTL_SECONDS:-600}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jm
         rest.address: 0.0.0.0
@@ -393,6 +409,8 @@ services:
       SIM_DRIVERS: ${SIM_DRIVERS:-50}
       SIM_RIDES_PER_SEC: ${SIM_RIDES_PER_SEC:-1.0}
       SIM_RIDERS: ${SIM_RIDERS:-100}
+      SIM_PCT_TELEPORT: ${SIM_PCT_TELEPORT:-0.0}
+      SIM_TELEPORT_KM: ${SIM_TELEPORT_KM:-10.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     restart: unless-stopped
 

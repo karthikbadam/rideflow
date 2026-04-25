@@ -81,6 +81,16 @@ async def locations_loop(
             if late
             else None
         )
+        if rng.random() < settings.sim_pct_teleport:
+            # Snap driver coords to ~teleport_km away before building the payload.
+            # Stays within bbox via city.tick's clamp on the next step.
+            import math as _m
+            km_per_deg_lat = 111.0
+            km_per_deg_lon = 111.0 * _m.cos(_m.radians(d.lat))
+            bearing = rng.uniform(0, 2 * _m.pi)
+            d.lat += settings.sim_teleport_km * _m.cos(bearing) / km_per_deg_lat
+            d.lon += settings.sim_teleport_km * _m.sin(bearing) / km_per_deg_lon
+            stats["teleport"] += 1
         payload = build_payload(d, occurred_at_ms=occurred)
         if late:
             stats["late"] += 1
@@ -196,6 +206,7 @@ async def run() -> None:
         "dup": 0,
         "late": 0,
         "malformed": 0,
+        "teleport": 0,
         "rides_accepted": 0,
     }
     pending: set[asyncio.Task] = set()

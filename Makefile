@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 
-.PHONY: help up down reset logs ps smoke register-schemas deregister-schemas submit-hot-zones submit-surge submit-idle submit-matching submit-phase2 topics shell-kafka shell-redis shell-pg list-jobs cancel-job
+.PHONY: help up down reset logs ps smoke register-schemas deregister-schemas submit-hot-zones submit-surge submit-idle submit-matching submit-anomaly submit-enrich submit-phase2 register-debezium deregister-debezium topics shell-kafka shell-redis shell-pg list-jobs cancel-job
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -52,7 +52,23 @@ submit-matching: ## Submit the ride-matching Flink job (Phase 2.3)
 	    --pyExecutable /usr/bin/python3 \
 	    -py /opt/flink/jobs/04_ride_matching.py
 
-submit-phase2: submit-surge submit-idle submit-matching ## Submit all Phase 2 jobs
+submit-anomaly: ## Submit the anomaly-detection Flink job (Phase 2.4)
+	$(COMPOSE) exec -T flink-jm flink run -d \
+	    --pyExecutable /usr/bin/python3 \
+	    -py /opt/flink/jobs/05_anomaly_detection.py
+
+submit-enrich: ## Submit the ride-enrichment Flink job (Phase 2.5)
+	$(COMPOSE) exec -T flink-jm flink run -d \
+	    --pyExecutable /usr/bin/python3 \
+	    -py /opt/flink/jobs/06_ride_enrichment.py
+
+submit-phase2: submit-surge submit-idle submit-matching submit-anomaly submit-enrich ## Submit all Phase 2 jobs
+
+register-debezium: ## POST the Debezium Postgres connector to Kafka Connect
+	bash scripts/register_debezium.sh
+
+deregister-debezium: ## DELETE the Debezium Postgres connector
+	curl -sf -X DELETE http://localhost:8083/connectors/rideflow-postgres-cdc && echo "deleted"
 
 list-jobs: ## List currently running Flink jobs
 	$(COMPOSE) exec -T flink-jm flink list

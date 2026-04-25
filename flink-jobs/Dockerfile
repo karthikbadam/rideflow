@@ -18,7 +18,8 @@ RUN pip3 install --no-cache-dir \
         apache-flink==1.18.1 \
         redis==5.0.1 \
         fastavro==1.9.7 \
-        requests==2.32.3
+        requests==2.32.3 \
+        confluent-kafka==2.5.0
 
 # Connector JARs:
 #   - flink-sql-connector-kafka: Kafka source (fat JAR with kafka-clients)

@@ -117,3 +117,33 @@ class RedisClient:
                 {"driver_id": d, "match_time_ms": int(s)} for d, s in raw
             ],
         }
+
+    async def recent_anomalies(self, limit: int) -> dict:
+        conn = self._conn()
+        raw = await conn.zrevrange(
+            self.settings.anomalies_recent_key, 0, max(0, limit - 1), withscores=True
+        )
+        anomalies = []
+        for anomaly_id, score in raw:
+            detail = await conn.hgetall(f"{self.settings.anomalies_detail_prefix}{anomaly_id}")
+            if not detail:
+                continue
+            anomalies.append({
+                "anomaly_id": anomaly_id,
+                "detected_at_ms": int(score),
+                "anomaly_type": detail.get("anomaly_type"),
+                "driver_id": detail.get("driver_id"),
+                "severity": detail.get("severity"),
+                "evidence": {
+                    k: detail[k]
+                    for k in ("observed_speed_mps", "prev_lat", "prev_lon",
+                              "curr_lat", "curr_lon", "gap_ms")
+                    if k in detail
+                },
+            })
+        return {"anomalies": anomalies}
+
+    async def enriched_ride(self, ride_id: str) -> Optional[dict]:
+        key = f"{self.settings.enriched_ride_prefix}{ride_id}"
+        raw = await self._conn().hgetall(key)
+        return raw or None

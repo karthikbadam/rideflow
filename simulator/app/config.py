@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     sim_pct_late: float = 0.0        # fraction stamped with past occurred_at
     sim_pct_dup: float = 0.0         # fraction re-sent once
     sim_pct_malformed: float = 0.0   # fraction with bad/missing fields
+    sim_pct_teleport: float = 0.0    # fraction of pings that jump driver 10km
+    sim_teleport_km: float = 10.0    # teleport distance for anomaly detection (Phase 2.4)
     sim_late_max_s: int = 120
 
     # HTTP
